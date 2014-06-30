@@ -103,7 +103,7 @@ func TestCapturePanic(t *testing.T) {
 }
 
 func TestStacktraceFunc(t *testing.T) {
-	TraceFilterFunc = func(traces []bugsnagStacktrace) []bugsnagStacktrace {
+	TraceFilterFunc = func(traces []Stacktrace) []Stacktrace {
 		for i := 0; i < len(traces); i++ {
 			traces[i].File = "ceci n'est pas un string" + traces[i].File
 		}

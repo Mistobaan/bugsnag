@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -23,58 +22,56 @@ var (
 	UseSSL              = true
 	Verbose             = false
 	Hostname            string
-	Notifier            = &bugsnagNotifier{
+	DefaultNotifier            = &Notifier{
 		Name:    "Bugsnag Go client",
-		Version: "0.0.2",
-		URL:     "https://github.com/mattetti/bugsnag_client",
+		Version: "0.1",
+		URL:     "https://github.com/Mistobaan/bugsnag",
 	}
 	TraceFilterFunc StacktraceFunc
 )
 
-type (
-	bugsnagNotifier struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-		URL     string `json:"url"`
-	}
-	bugsnagPayload struct {
-		APIKey   string           `json:"apiKey"`
-		Notifier *bugsnagNotifier `json:"notifier"`
-		Events   []*bugsnagEvent  `json:"events"`
-	}
-	bugsnagException struct {
-		ErrorClass string              `json:"errorClass"`
-		Message    string              `json:"message,omitempty"`
-		Stacktrace []bugsnagStacktrace `json:"stacktrace,omitempty"`
-	}
-	bugsnagStacktrace struct {
-		File       string `json:"file"`
-		LineNumber string `json:"lineNumber"`
-		Method     string `json:"method"`
-		InProject  bool   `json:"inProject,omitempty"`
-	}
-	bugsnagEvent struct {
-		UserID       string                            `json:"userId,omitempty"`
-		AppVersion   string                            `json:"appVersion,omitempty"`
-		OSVersion    string                            `json:"osVersion,omitempty"`
-		ReleaseStage string                            `json:"releaseStage"`
-		Context      string                            `json:"context,omitempty"`
-		Exceptions   []bugsnagException                `json:"exceptions"`
-		MetaData     map[string]map[string]interface{} `json:"metaData,omitempty"`
-	}
-	StacktraceFunc func(traces []bugsnagStacktrace) []bugsnagStacktrace
-)
-
-func init() {
-	Hostname, _ = os.Hostname()
+type Notifier struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	URL     string `json:"url"`
 }
 
-func send(events []*bugsnagEvent) error {
-	if APIKey == "" {
-		return errors.New("Missing APIKey")
-	}
-	payload := &bugsnagPayload{
-		Notifier: Notifier,
+type Payload struct {
+	APIKey   string           `json:"apiKey"`
+	Notifier *Notifier `json:"notifier"`
+	Events   []*Event         `json:"events"`
+}
+
+type Exception struct {
+	ErrorClass string       `json:"errorClass"`
+	Message    string       `json:"message,omitempty"`
+	Stacktrace []Stacktrace `json:"stacktrace,omitempty"`
+}
+
+type Stacktrace struct {
+	File       string `json:"file"`
+	LineNumber string `json:"lineNumber"`
+	Method     string `json:"method"`
+	InProject  bool   `json:"inProject,omitempty"`
+}
+
+type Event struct {
+	UserID       string                            `json:"userId,omitempty"`
+	AppVersion   string                            `json:"appVersion,omitempty"`
+	OSVersion    string                            `json:"osVersion,omitempty"`
+	ReleaseStage string                            `json:"releaseStage"`
+	Context      string                            `json:"context,omitempty"`
+	Exceptions   []Exception                       `json:"exceptions"`
+	MetaData     map[string]map[string]interface{} `json:"metaData,omitempty"`
+}
+
+type StacktraceFunc func(traces []Stacktrace) []Stacktrace
+
+const ApplicationJson = "application/json"
+
+func send(events []*Event) error {
+	payload := &Payload{
+		Notifier: DefaultNotifier,
 		APIKey:   APIKey,
 		Events:   events,
 	}
@@ -86,12 +83,13 @@ func send(events []*bugsnagEvent) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post(protocol+"://notify.bugsnag.com", "application/json", bytes.NewBuffer(b))
+	resp, err := http.Post(protocol+"://notify.bugsnag.com", ApplicationJson, bytes.NewBuffer(b))
 	if err != nil {
 		return err
 	}
 	// Always close a response's Body (which is always non-nil if err==nil)
 	defer resp.Body.Close()
+
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("Unexpected status code: %d", resp.StatusCode)
 	} else if Verbose {
@@ -107,8 +105,8 @@ func send(events []*bugsnagEvent) error {
 	return nil
 }
 
-func getStacktrace() []bugsnagStacktrace {
-	var stacktrace []bugsnagStacktrace
+func getStacktrace() []Stacktrace {
+	var stacktrace []Stacktrace
 	i := 3 // First 3 lines are our own functions, not interesting
 	for {
 		if pc, file, line, ok := runtime.Caller(i); !ok {
@@ -119,7 +117,7 @@ func getStacktrace() []bugsnagStacktrace {
 				methodName = f.Name()
 			}
 			if methodName != "panic" {
-				traceLine := bugsnagStacktrace{
+				traceLine := Stacktrace{
 					File:       file,
 					LineNumber: strconv.Itoa(line),
 					Method:     methodName,
@@ -161,13 +159,13 @@ func CapturePanic(r *http.Request) {
 
 // New returns returns a bugsnag event instance, that can be further configured
 // before sending it.
-func New(err error) *bugsnagEvent {
-	return &bugsnagEvent{
+func New(err error) *Event {
+	return &Event{
 		AppVersion:   AppVersion,
 		OSVersion:    OSVersion,
 		ReleaseStage: ReleaseStage,
-		Exceptions: []bugsnagException{
-			bugsnagException{
+		Exceptions: []Exception{
+			Exception{
 				ErrorClass: reflect.TypeOf(err).String(),
 				Message:    err.Error(),
 				Stacktrace: getStacktrace(),
@@ -177,18 +175,18 @@ func New(err error) *bugsnagEvent {
 }
 
 // WithUserID sets the user_id property on the bugsnag event.
-func (event *bugsnagEvent) WithUserID(userID string) *bugsnagEvent {
+func (event *Event) WithUserID(userID string) *Event {
 	event.UserID = userID
 	return event
 }
 
-func (event *bugsnagEvent) WithContext(context string) *bugsnagEvent {
+func (event *Event) WithContext(context string) *Event {
 	event.Context = context
 	return event
 }
 
 // WithMetaDataValues sets bunch of key-value pairs under a tab in bugsnag
-func (event *bugsnagEvent) WithMetaDataValues(tab string, values map[string]interface{}) *bugsnagEvent {
+func (event *Event) WithMetaDataValues(tab string, values map[string]interface{}) *Event {
 	if event.MetaData == nil {
 		event.MetaData = make(map[string]map[string]interface{})
 	}
@@ -197,7 +195,7 @@ func (event *bugsnagEvent) WithMetaDataValues(tab string, values map[string]inte
 }
 
 // WithMetaData adds a key-value pair under a tab in bugsnag
-func (event *bugsnagEvent) WithMetaData(tab string, name string, value interface{}) *bugsnagEvent {
+func (event *Event) WithMetaData(tab string, name string, value interface{}) *Event {
 	if event.MetaData == nil {
 		event.MetaData = make(map[string]map[string]interface{})
 	}
@@ -209,14 +207,14 @@ func (event *bugsnagEvent) WithMetaData(tab string, name string, value interface
 }
 
 // Notify sends the configured event off to bugsnag.
-func (event *bugsnagEvent) Notify() error {
+func (event *Event) Notify() error {
 	for _, stage := range NotifyReleaseStages {
 		if stage == event.ReleaseStage {
 			if Hostname != "" {
 				// Custom metadata to know what machine is reporting the error.
 				event.WithMetaData("host", "name", Hostname)
 			}
-			return send([]*bugsnagEvent{event})
+			return send([]*Event{event})
 		}
 	}
 	return nil
