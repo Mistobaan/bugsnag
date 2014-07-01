@@ -10,15 +10,14 @@ import (
 
 func init() {
 	// Configure bugsnag
-	APIKey = os.Getenv("BUGSNAG_APIKEY")
-	Verbose = true
-	OSVersion = "3.2.1"
+	DefaultClient.OSVersion = "3.2.1"
+	DefaultClient.APIKey = os.Getenv("BUGSNAP_APIKEY")
 }
 
 func TestNotify(t *testing.T) {
 	// Notify about an error
 	e := errors.New("This is a test")
-	if err := Notify(e); err != nil {
+	if err := NotifyError(e); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -28,7 +27,7 @@ func TestNotifyRequest(t *testing.T) {
 	e := errors.New("This is a test")
 	if r, err := http.NewRequest("GET", "some URL", nil); err != nil {
 		t.Fatal(err)
-	} else if err := NotifyRequest(e, r); err != nil {
+	} else if err := NotifyErrorRequest(e, r); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -40,7 +39,7 @@ func TestSetMetaDataBeforeNotify(t *testing.T) {
 		"account_id": 5555,
 		"user_agent": "ie4",
 	}
-	if err := New(e).WithUserID("12345").WithMetaDataValues("user_info", values).Notify(); err != nil {
+	if err := Notify(New(e).WithUserID("12345").WithMetaDataValues("user_info", values)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -48,7 +47,7 @@ func TestSetMetaDataBeforeNotify(t *testing.T) {
 func TestWithMetaDataBeforeNotify(t *testing.T) {
 	// Notify about another error, with more details
 	e := errors.New("Another error")
-	if err := New(e).WithUserID("12345").WithMetaData("user_info", "name", "mr. Fu").Notify(); err != nil {
+	if err := Notify(New(e).WithUserID("12345").WithMetaData("user_info", "name", "mr. Fu")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -56,7 +55,7 @@ func TestWithMetaDataBeforeNotify(t *testing.T) {
 func TestNewNotify(t *testing.T) {
 	// Notify about another error, with more details
 	e := errors.New("One more error")
-	if err := New(e).Notify(); err != nil {
+	if err := Notify(New(e)); err != nil {
 		t.Fatal(err)
 	}
 }

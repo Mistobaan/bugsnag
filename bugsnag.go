@@ -5,24 +5,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
 )
 
+const BUGSNAG_URL string = "notify.bugsnag.com"
+
+func hostname() string {
+	name, _ := os.Hostname()
+	return name
+}
+
+func init() {
+	DefaultClient.APIKey = os.Getenv("BUGSNAP_APIKEY")
+}
+
 var (
-	APIKey              string
-	OSVersion           string
-	ReleaseStage        = "production"
-	NotifyReleaseStages = []string{"production"}
-	AutoNotify          = true
-	UseSSL              = true
-	Verbose             = false
-	Hostname            string
-	DefaultNotifier     = &Notifier{
+	DefaultNotifier = &Notifier{
 		Name:    "Bugsnag Go",
 		Version: "0.1",
 		URL:     "https://github.com/Mistobaan/bugsnag",
@@ -30,18 +32,32 @@ var (
 	TraceFilterFunc StacktraceFunc
 
 	// Default Client to use
-	DefaultClient Client
+	DefaultClient *Client = &Client{
+		ReleaseStage:        "production",
+		NotifyReleaseStages: []string{"production"},
+		AutoNotify:          true,
+		UseSSL:              true,
+		Verbose:             false,
+		Indent:              false,
+		Url:                 BUGSNAG_URL,
+		Hostname:            hostname(),
+		Notifier:            DefaultNotifier,
+	}
 )
 
 type Client struct {
-	APIKey     string
-	OSVersion  string
-	Protocol   string
-	AutoNotify bool
-	UseSSL     bool
-	Verbose    bool
-	Url        string
-	Indent     bool
+	APIKey              string
+	OSVersion           string
+	Protocol            string
+	AutoNotify          bool
+	UseSSL              bool
+	Verbose             bool
+	Url                 string
+	Indent              bool
+	ReleaseStage        string
+	NotifyReleaseStages []string
+	Hostname            string
+	Notifier            *Notifier
 }
 
 type App struct {
@@ -74,7 +90,7 @@ type Exception struct {
 
 type Stacktrace struct {
 	File       string `json:"file"`
-	LineNumber string `json:"lineNumber"`
+	LineNumber int    `json:"lineNumber"`
 	Method     string `json:"method"`
 	InProject  bool   `json:"inProject,omitempty"`
 }
@@ -113,26 +129,28 @@ func Encode(payload interface{}, indent bool) ([]byte, error) {
 	return b, nil
 }
 
-func send(events []*Event) error {
-	if APIKey == "" {
+func (c *Client) send(events []*Event) error {
+
+	if c.APIKey == "" {
 		return fmt.Errorf("No Api Key Provided")
 	}
 
 	payload := &Payload{
-		Notifier: DefaultNotifier,
-		APIKey:   APIKey,
+		Notifier: c.Notifier,
+		APIKey:   c.APIKey,
 		Events:   events,
 	}
-	protocol := "http"
-	if UseSSL {
-		protocol = "https"
+
+	protocol := "http://"
+	if c.UseSSL {
+		protocol = "https://"
 	}
 
-	b, err := Encode(payload, false)
+	b, err := Encode(payload, c.Indent)
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post(protocol+"://notify.bugsnag.com", ApplicationJson, bytes.NewBuffer(b))
+	resp, err := http.Post(protocol+c.Url, ApplicationJson, bytes.NewBuffer(b))
 	if err != nil {
 		return err
 	}
@@ -141,98 +159,17 @@ func send(events []*Event) error {
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("Unexpected status code: %d", resp.StatusCode)
-	} else if Verbose {
-		println(string(b))
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		println(resp.StatusCode)
-		println(resp.Status)
-		println(string(b))
 	}
 	return nil
 }
 
-const (
-	centerDot = "·"
-	dot       = "."
-	dunno     = "???"
-)
-
-// function returns, if possible, the name of the function containing the PC.
-func function(pc uintptr) string {
-	fn := runtime.FuncForPC(pc)
-	if fn == nil {
-		return dunno
-	}
-	name := fn.Name()
-	// Strip package path name
-	if period := strings.Index(name, dot); period >= 0 {
-		name = name[period+1:]
-	}
-	return strings.Replace(name, centerDot, dot, -1)
-}
-
-// TODO strip basedir
-func stacktrace(skip int) []Stacktrace {
-	var stacktrace []Stacktrace
-	for i := skip; ; i++ {
-		pc, file, line, ok := runtime.Caller(i)
-		if !ok {
-			break
-		}
-
-		methodName := function(pc)
-
-		if methodName != "panic" {
-			traceLine := Stacktrace{
-				File:       file,
-				LineNumber: strconv.Itoa(line),
-				Method:     methodName,
-				InProject:  !strings.Contains(file, "go/src/pkg/"),
-			}
-			stacktrace = append(stacktrace, traceLine)
-		}
-
-	}
-	if TraceFilterFunc != nil {
-		stacktrace = TraceFilterFunc(stacktrace)
-	}
-	return stacktrace
-}
-
-// Notify sends an error to bugsnag
-func Notify(err error) error {
-	return New(err).Notify()
-}
-
-// NotifyRequest sends an error to bugsnag, and sets request
-// URL as the event context
-// and marshals down the request content.
-func NotifyRequest(err error, r *http.Request) error {
-	return New(err).WithContext(r.URL.String()).WithMetaData("request", "dump", r).Notify()
-}
-
-// CapturePanic reports panics happening while processing an HTTP request
-func CapturePanic(r *http.Request) {
-	if recovered := recover(); recovered != nil {
-		if err, ok := recovered.(error); ok {
-			NotifyRequest(err, r)
-		} else if err, ok := recovered.(string); ok {
-			NotifyRequest(errors.New(err), r)
-		}
-		panic(recovered)
-	}
-}
-
 // New returns returns a bugsnag event instance, that can be further configured
 // before sending it.
-func New(err error) *Event {
+func (c *Client) New(err error) *Event {
 	return &Event{
 		PayloadVersion: "2",
-		OSVersion:      OSVersion,
-		ReleaseStage:   ReleaseStage,
+		OSVersion:      c.OSVersion,
+		ReleaseStage:   c.ReleaseStage,
 		App: App{
 			Version: "2",
 		},
@@ -287,15 +224,97 @@ func (event *Event) WithMetaData(tab string, name string, value interface{}) *Ev
 }
 
 // Notify sends the configured event off to bugsnag.
-func (event *Event) Notify() error {
-	for _, stage := range NotifyReleaseStages {
+func (c *Client) Notify(event *Event) error {
+	for _, stage := range c.NotifyReleaseStages {
 		if stage == event.ReleaseStage {
-			if Hostname != "" {
+			if c.Hostname != "" {
 				// Custom metadata to know what machine is reporting the error.
-				event.WithMetaData("host", "name", Hostname)
+				event.WithMetaData("host", "name", c.Hostname)
 			}
-			return send([]*Event{event})
+			return c.send([]*Event{event})
 		}
 	}
 	return nil
+}
+
+func New(e error) *Event {
+	return DefaultClient.New(e)
+}
+
+// NotifyError sends an error to bugsnag using the default client
+func NotifyError(err error) error {
+	return DefaultClient.Notify(DefaultClient.New(err))
+}
+
+// Notify sends an event to bugsnag using the default client
+func Notify(e *Event) error {
+	return DefaultClient.Notify(e)
+}
+
+// NotifyRequest sends an error to bugsnag, and sets request
+// URL as the event context
+// and marshals down the request content.
+func NotifyErrorRequest(err error, r *http.Request) error {
+	event := DefaultClient.New(err).WithContext(r.URL.String()).WithMetaData("request", "dump", r)
+	return DefaultClient.Notify(event)
+}
+
+const (
+	centerDot = "·"
+	dot       = "."
+	dunno     = "???"
+)
+
+// function returns, if possible, the name of the function containing the PC.
+func function(pc uintptr) string {
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return dunno
+	}
+	name := fn.Name()
+	// Strip package path name
+	if period := strings.Index(name, dot); period >= 0 {
+		name = name[period+1:]
+	}
+	return strings.Replace(name, centerDot, dot, -1)
+}
+
+// TODO strip basedir
+func stacktrace(skip int) []Stacktrace {
+	var stacktrace []Stacktrace
+	for i := skip; ; i++ {
+		pc, file, line, ok := runtime.Caller(i)
+		if !ok {
+			break
+		}
+
+		methodName := function(pc)
+
+		if methodName != "panic" {
+			traceLine := Stacktrace{
+				File:       file,
+				LineNumber: line,
+				Method:     methodName,
+				InProject:  !strings.Contains(file, "go/src/pkg/"),
+			}
+			stacktrace = append(stacktrace, traceLine)
+		}
+
+	}
+	if TraceFilterFunc != nil {
+		stacktrace = TraceFilterFunc(stacktrace)
+	}
+	return stacktrace
+}
+
+// CapturePanic reports panics happening while processing an HTTP request
+func CapturePanic(r *http.Request) {
+	if recovered := recover(); recovered != nil {
+		if err, ok := recovered.(error); ok {
+			NotifyErrorRequest(err, r)
+		} else if err, ok := recovered.(string); ok {
+			NotifyErrorRequest(errors.New(err), r)
+		}
+		panic(recovered)
+	}
 }
