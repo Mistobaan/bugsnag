@@ -22,12 +22,12 @@ func TestNotify(t *testing.T) {
 	}
 }
 
-func TestNotifyRequest(t *testing.T) {
+func TestNotifyRequestError(t *testing.T) {
 	// Notify about an error
 	e := errors.New("This is a test")
 	if r, err := http.NewRequest("GET", "some URL", nil); err != nil {
 		t.Fatal(err)
-	} else if err := NotifyErrorRequest(e, r); err != nil {
+	} else if err := NotifyRequestError(e, r); err != nil {
 		t.Fatal(err)
 	}
 }

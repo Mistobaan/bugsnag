@@ -49,6 +49,7 @@ var (
 	}
 )
 
+// Client bugsnag notification api
 type Client struct {
 	APIKey              string
 	OSVersion           string
@@ -62,6 +63,8 @@ type Client struct {
 	NotifyReleaseStages []string
 	Hostname            string
 	Notifier            *Notifier
+	DefaultContext      string
+	App                 *App
 }
 
 type App struct {
@@ -102,8 +105,8 @@ type Stacktrace struct {
 type Event struct {
 	UserID         string                            `json:"userId,omitempty"`
 	PayloadVersion string                            `json:"payloadVersion"`
-	App            App                               `json:"app,omitempty"`
-	Device         Device                            `json:"device,omitempty"`
+	App            *App                              `json:"app,omitempty"`
+	Device         *Device                           `json:"device,omitempty"`
 	OSVersion      string                            `json:"osVersion,omitempty"`
 	ReleaseStage   string                            `json:"releaseStage"`
 	Context        string                            `json:"context,omitempty"`
@@ -165,16 +168,14 @@ func (c *Client) send(events []*Event) error {
 	return nil
 }
 
-// New returns returns a bugsnag event instance, that can be further configured
+// New returns returns a bugsnag Event instance, that can be further configured
 // before sending it.
 func (c *Client) New(err error) *Event {
 	return &Event{
 		PayloadVersion: "2",
 		OSVersion:      c.OSVersion,
 		ReleaseStage:   c.ReleaseStage,
-		App: App{
-			Version: "2",
-		},
+		App:            c.App,
 		// XXX Context
 		// XXX GroupingHash
 		// XXX Severity
@@ -191,6 +192,18 @@ func (c *Client) New(err error) *Event {
 			},
 		},
 	}
+}
+
+func SetAPIKey(key string) {
+	DefaultClient.APIKey = key
+}
+
+func (c *Client) SetApp(app *App) {
+	c.App = app
+}
+
+func SetApp(app *App) {
+	DefaultClient.SetApp(app)
 }
 
 // WithUserID sets the user_id property on the bugsnag event.
@@ -253,10 +266,10 @@ func Notify(e *Event) error {
 	return DefaultClient.Notify(e)
 }
 
-// NotifyRequest sends an error to bugsnag, and sets request
+// NotifyRequestError sends an error to bugsnag, and sets request
 // URL as the event context
 // and marshals down the request content.
-func NotifyErrorRequest(err error, r *http.Request) error {
+func NotifyRequestError(err error, r *http.Request) error {
 	event := DefaultClient.New(err).WithContext(r.URL.String()).WithMetaData("request", "dump", r)
 	return DefaultClient.Notify(event)
 }
@@ -313,9 +326,9 @@ func stacktrace(skip int) []Stacktrace {
 func CapturePanic(r *http.Request) {
 	if recovered := recover(); recovered != nil {
 		if err, ok := recovered.(error); ok {
-			NotifyErrorRequest(err, r)
+			NotifyRequestError(err, r)
 		} else if err, ok := recovered.(string); ok {
-			NotifyErrorRequest(errors.New(err), r)
+			NotifyRequestError(errors.New(err), r)
 		}
 		panic(recovered)
 	}
