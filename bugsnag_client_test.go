@@ -11,7 +11,7 @@ import (
 func init() {
 	// Configure bugsnag
 	DefaultClient.OSVersion = "3.2.1"
-	DefaultClient.APIKey = os.Getenv("BUGSNAP_APIKEY")
+	DefaultClient.APIKey = os.Getenv("BUGSNAG_APIKEY")
 }
 
 func TestNotify(t *testing.T) {

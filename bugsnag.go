@@ -21,7 +21,7 @@ func hostname() string {
 }
 
 func init() {
-	DefaultClient.APIKey = os.Getenv("BUGSNAP_APIKEY")
+	DefaultClient.APIKey = os.Getenv("BUGSNAG_APIKEY")
 }
 
 var (
