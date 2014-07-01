@@ -13,6 +13,7 @@ import (
 )
 
 const BUGSNAG_URL string = "notify.bugsnag.com"
+const ApplicationJson = "application/json"
 
 func hostname() string {
 	name, _ := os.Hostname()
@@ -24,11 +25,14 @@ func init() {
 }
 
 var (
+	// Default Notifier
 	DefaultNotifier = &Notifier{
 		Name:    "Bugsnag Go",
 		Version: "0.1",
 		URL:     "https://github.com/Mistobaan/bugsnag",
 	}
+
+	// Filter function
 	TraceFilterFunc StacktraceFunc
 
 	// Default Client to use
@@ -109,9 +113,7 @@ type Event struct {
 
 type StacktraceFunc func(traces []Stacktrace) []Stacktrace
 
-const ApplicationJson = "application/json"
-
-func Encode(payload interface{}, indent bool) ([]byte, error) {
+func encode(payload interface{}, indent bool) ([]byte, error) {
 
 	if indent {
 		b, err := json.MarshalIndent(payload, "", "\t")
