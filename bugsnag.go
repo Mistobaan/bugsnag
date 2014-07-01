@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-const BUGSNAG_URL string = "notify.bugsnag.com"
-const ApplicationJson = "application/json"
+const bugsnagURL string = "notify.bugsnag.com"
+const applicationJson = "application/json"
 
 func hostname() string {
 	name, _ := os.Hostname()
@@ -43,7 +43,7 @@ var (
 		UseSSL:              true,
 		Verbose:             false,
 		Indent:              false,
-		Url:                 BUGSNAG_URL,
+		Url:                 bugsnagURL,
 		Hostname:            hostname(),
 		Notifier:            DefaultNotifier,
 	}
@@ -148,11 +148,11 @@ func (c *Client) send(events []*Event) error {
 		protocol = "https://"
 	}
 
-	b, err := Encode(payload, c.Indent)
+	b, err := encode(payload, c.Indent)
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post(protocol+c.Url, ApplicationJson, bytes.NewBuffer(b))
+	resp, err := http.Post(protocol+c.Url, applicationJson, bytes.NewBuffer(b))
 	if err != nil {
 		return err
 	}
