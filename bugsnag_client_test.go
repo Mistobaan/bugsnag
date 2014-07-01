@@ -8,13 +8,14 @@ import (
 	"testing"
 )
 
-func TestNotify(t *testing.T) {
+func init() {
 	// Configure bugsnag
-	Verbose = true
 	APIKey = os.Getenv("BUGSNAG_APIKEY")
-	AppVersion = "1.2.3"
+	Verbose = true
 	OSVersion = "3.2.1"
+}
 
+func TestNotify(t *testing.T) {
 	// Notify about an error
 	e := errors.New("This is a test")
 	if err := Notify(e); err != nil {
@@ -23,10 +24,6 @@ func TestNotify(t *testing.T) {
 }
 
 func TestNotifyRequest(t *testing.T) {
-	// Configure bugsnag
-	Verbose = true
-	APIKey = os.Getenv("BUGSNAG_APIKEY")
-
 	// Notify about an error
 	e := errors.New("This is a test")
 	if r, err := http.NewRequest("GET", "some URL", nil); err != nil {
@@ -37,10 +34,6 @@ func TestNotifyRequest(t *testing.T) {
 }
 
 func TestSetMetaDataBeforeNotify(t *testing.T) {
-	// Configure bugsnag
-	APIKey = os.Getenv("BUGSNAG_APIKEY")
-	Verbose = true
-
 	// Notify about another error, with more details
 	e := errors.New("This is another test")
 	values := map[string]interface{}{
@@ -53,10 +46,6 @@ func TestSetMetaDataBeforeNotify(t *testing.T) {
 }
 
 func TestWithMetaDataBeforeNotify(t *testing.T) {
-	// Configure bugsnag
-	APIKey = os.Getenv("BUGSNAG_APIKEY")
-	Verbose = true
-
 	// Notify about another error, with more details
 	e := errors.New("Another error")
 	if err := New(e).WithUserID("12345").WithMetaData("user_info", "name", "mr. Fu").Notify(); err != nil {
@@ -65,10 +54,6 @@ func TestWithMetaDataBeforeNotify(t *testing.T) {
 }
 
 func TestNewNotify(t *testing.T) {
-	// Configure bugsnag
-	APIKey = os.Getenv("BUGSNAG_APIKEY")
-	Verbose = true
-
 	// Notify about another error, with more details
 	e := errors.New("One more error")
 	if err := New(e).Notify(); err != nil {
@@ -77,10 +62,6 @@ func TestNewNotify(t *testing.T) {
 }
 
 func TestCapturePanic(t *testing.T) {
-	// Configure bugsnag
-	Verbose = true
-	APIKey = os.Getenv("BUGSNAG_APIKEY")
-
 	// Notify about an error
 	r, err := http.NewRequest("GET", "some URL", nil)
 	if err != nil {
@@ -105,7 +86,7 @@ func TestCapturePanic(t *testing.T) {
 func TestStacktraceFunc(t *testing.T) {
 	TraceFilterFunc = func(traces []Stacktrace) []Stacktrace {
 		for i := 0; i < len(traces); i++ {
-			traces[i].File = "ceci n'est pas un string" + traces[i].File
+			traces[i].File = "this is not a string" + traces[i].File
 		}
 		return traces
 	}
@@ -113,9 +94,9 @@ func TestStacktraceFunc(t *testing.T) {
 		TraceFilterFunc = nil
 	}()
 
-	traces := getStacktrace()
+	traces := stacktrace(3)
 	for _, trace := range traces {
-		if !strings.HasPrefix(trace.File, "ceci n'est pas un string") {
+		if !strings.HasPrefix(trace.File, "this is not a string") {
 			t.Fatal("TraceFilterFunc is not correctly filtering the stacktrace")
 		}
 	}
